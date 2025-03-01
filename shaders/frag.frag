@@ -14,14 +14,13 @@ void main() {
 
     // vec2 dim = vec2(1600.0, 900.0);
 
-    float borderWidth = 0.01;
-
-    float bw = 20.0;
+    float border_width = 8.0;
+    float border_radius = 30.0;
 
     vec2 size = dim;
 
-    float d = roundedBoxSDF(uv * size - (size / 2.0), size / 2.0, 30.0);
-    float d2 = roundedBoxSDF(uv * size - (size / 2.0), (size) / 2.0 - vec2(bw), 30.0);
+    float d = roundedBoxSDF(uv * size - (size / 2.0), size / 2.0, border_radius);
+    float d2 = roundedBoxSDF(uv * size - (size / 2.0), size / 2.0 - vec2(border_width), border_radius - border_width);
     if (d > 0.0) discard;
 
     outColor = d2 > 0.0 ? border : bg; // vec4(uv, 0.0, 1.0);
