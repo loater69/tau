@@ -24,7 +24,7 @@ int indices[6] = int[](
 );
 
 layout(location = 0) out vec2 uv;
-layout(location = 1) out ivec2 dim;
+layout(location = 1) out vec2 dim;
 
 void main() {
     Vertex vertex = vertices[indices[gl_VertexIndex]];
