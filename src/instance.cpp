@@ -140,7 +140,7 @@ void Instance::recordCommandBuffer(vk::raii::CommandBuffer& cmd, uint32_t image)
 
     BoxConstants c;
     c.position = { 0.5f, 0.5f };
-    c.scale = { 1.0f, 1.0f };
+    c.scale = { 0.5f, 0.5f };
     c.dimensions = { (int32_t)swapchain.extent.width, (int32_t)swapchain.extent.height };
 
     cmd.pushConstants<BoxConstants>(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, { c });

@@ -24,9 +24,11 @@ int indices[6] = int[](
 );
 
 layout(location = 0) out vec2 uv;
+layout(location = 1) out ivec2 dim;
 
 void main() {
     Vertex vertex = vertices[indices[gl_VertexIndex]];
     gl_Position = vec4(vertex.pos * trans.scale + trans.pos - vec2(0.5), 0.0, 1.0);
     uv = vertex.uv;
+    dim = trans.dimensions * trans.scale;
 }

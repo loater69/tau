@@ -9,7 +9,7 @@
 #include <string>
 
 #include "box.h"
-// #include "dom.h"
+#include "dom.h"
 
 #include <vector>
 

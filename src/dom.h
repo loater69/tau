@@ -5,6 +5,7 @@
 #include "instance.h"
 
 #include <functional>
+#include <sstream>
 
 class Instance;
 struct Pipeline;
@@ -41,27 +42,93 @@ constexpr inline color red = 0xff0000ff;
 constexpr inline color green = 0x00ff00ff;
 constexpr inline color blue = 0x0000ffff;
 
-struct Default {
-    struct Fragstate {};
+struct Style {
+    int depth = 1;
+
+    template<std::derived_from<Style> Left, std::derived_from<Style> Right>
+    struct Convolved;
+
+    template<typename This, std::derived_from<Style> Right>
+    Convolved<This, Right> operator | (this This&& self, Right&& r);
+
+    template<typename T>
+    std::string compile(this T&) {
+        std::ostringstream code;
+        std::ostringstream functions;
+
+        size_t n = 0;
+
+        T::code(n, code, functions);
+
+        std::string c = "#version 450\nlayout(location = 0) out vec4 outColor;\nlayout(location = 0) in vec2 uv;\n";
+
+        c += functions.str();
+
+        c += "void main() {\n";
+        c += code.str();
+        c += "}\n";
+
+        return c;
+    }
 };
 
-struct Gradient {
-    struct Fragstate {
-        color from;
-        color to;
-    };
+template<std::derived_from<Style> Left, std::derived_from<Style> Right>
+struct Style::Convolved : Style {
+    Left l;
+    Right r;
 
-    struct Staticstate {
-        vk::raii::DescriptorSetLayout layout = nullptr;
-        Pipeline pipe;
-    };
+    static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions) {
+        ++n;
+        Left::code(n, code, functions);
+        Right::code(n, code, functions);
+    }
+};
 
-    static constexpr auto vert = "vert.spv";
-    static constexpr auto frag = "gradient.spv";
-    inline static Staticstate state;
-    
-    static vk::raii::DescriptorSetLayout createDescriptorSetLayout(Instance& i);
-    static vk::raii::DescriptorSet createDescriptorSet(Instance& i);
+template<typename This, std::derived_from<Style> Right>
+Style::Convolved<This, Right> Style::operator | (this This&& self, Right&& r) {
+    Convolved<This, Right> c;
+    c.depth = self.depth + r.depth;
+    c.l = std::move(self);
+    c.r = std::move(r);
+
+    return c;
+}
+
+struct Default : Style {
+
+    constexpr static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions) {
+        ++n;
+    }
+};
+
+struct Border : Style {
+    int corner_radius = 0;
+    int width = 0;
+    color color;
+
+    static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions) {
+        functions << "float roundedBoxSDF(vec2 CenterPosition, vec2 Size, float Radius) {\n"
+        << "return length(max(abs(CenterPosition) - Size + Radius, 0.0)) - Radius;\n"
+        << "}\n";
+
+        code << "float d = roundedBoxSDF(uv - vec2(0.5), vec2(0.5), 0.2);\n"
+        << "float d2 = roundedBoxSDF(uv - vec2(0.5), vec2(0.5 - (ubo.border_width" << n << " / 2.0)), 0.2);\n"
+        << "if (d > 0.0) discard;\n"
+        << "outColor = d2 > 0.0 ? ubo.border_color" << n << " : outColor;\n";
+
+        ++n;
+    }
+};
+
+struct Gradient : Style {
+    color from;
+    color to;
+
+    static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions) {
+        code << "outColor = mix(ubo.from" << n << ", ubo.to" << n << ", uv.y)\n";
+
+        ++n;
+    }
 };
 
 constexpr inline Gradient gradient{};
@@ -69,34 +136,23 @@ constexpr inline Gradient gradient{};
 struct element {
     Box bounds;
     std::function<Box(Box, const std::span<Box>, size_t i)> layout;
-
-    virtual void render(vk::raii::CommandBuffer& cmd) = 0;
 };
 
-#define element_props [[no_unique_address]] [[msvc::no_unique_address]] Shader type; \
-Shader::Fragstate style; \
+#define element_props Shader style; \
 std::function<Box(Box, const std::span<Box>, size_t i)> layout;
 
 template<typename Shader = Default>
-struct view { 
+struct view {
     element_props
 
     struct element : ::element {
-        Shader::Fragstate props;
 
-        virtual void render(vk::raii::CommandBuffer& cmd) {
-            BoxConstants bc;
-
-            cmd.pushConstants(Shader::state.layout, vk::ShaderStageFlagBits::eVertex, 0, { bc });
-            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics);
-            cmd.drawIndexed(6, 1, 0, 0, 0);
-        }
     };
 
     std::unique_ptr<element> operator ()() {
         auto e = std::make_unique<element>();
-        e.props = std::move(style);
-        e.layout = std::move(layout);
+        // e.props = std::move(style);
+        // e.layout = std::move(layout);
 
         return e;
     }
