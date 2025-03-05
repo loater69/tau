@@ -22,6 +22,7 @@ executable(
         'src/main.cpp',
         'src/instance.cpp',
         'src/pipelines.cpp',
+        'src/dom.cpp'
     ],
     dependencies: [
         vulkan,

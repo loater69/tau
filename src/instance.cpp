@@ -28,7 +28,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
     return VK_FALSE;
 }
 
-void Instance::loop() {
+void tau::Instance::loop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -36,12 +36,52 @@ void Instance::loop() {
     }
 }
 
+void tau::Instance::render(std::unique_ptr<ComponentElement>&& comp) {
+    comp->child = comp->render_func();
+    top_component = std::move(comp);
+
+    loop();
+}
+
 static void frameBufferResizeCallback(GLFWwindow* window, int width, int height) {
-    auto app = reinterpret_cast<Instance*>(glfwGetWindowUserPointer(window));
+    auto app = reinterpret_cast<tau::Instance*>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
 }
 
-void Instance::frame() {
+uint32_t findMemoryType(const vk::raii::PhysicalDevice& pd, uint32_t typeFilter, vk::MemoryPropertyFlagBits properties) {
+    vk::PhysicalDeviceMemoryProperties memProperties = pd.getMemoryProperties();
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("failed to find suitable memory type!");
+}
+
+std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> tau::Instance::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties) {
+    vk::BufferCreateInfo bufferInfo{};
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+
+    auto buffer = device.createBuffer(bufferInfo);
+
+    auto memRequirements = buffer.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo{};
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, *(vk::MemoryPropertyFlagBits*)&properties); // fuck it
+
+    auto memory = device.allocateMemory(allocInfo);
+
+    buffer.bindMemory(*memory, 0);
+
+    return std::make_pair(std::move(buffer), std::move(memory));
+}
+
+void tau::Instance::frame() {
     device.waitForFences({ *inFlightFences[currentFrame] }, true, std::numeric_limits<uint64_t>::max());
 
     auto[res, i] = swapchain.swapchain.acquireNextImage(std::numeric_limits<uint64_t>::max(), *imageAvailableSemaphores[currentFrame]);
@@ -97,7 +137,7 @@ void Instance::frame() {
     ++currentFrame %= max_frames_in_flight;
 }
 
-void Instance::recordCommandBuffer(vk::raii::CommandBuffer& cmd, uint32_t image) {
+void tau::Instance::recordCommandBuffer(vk::raii::CommandBuffer& cmd, uint32_t image) {
     cmd.begin({});
 
     vk::RenderPassBeginInfo rpbi{};
@@ -152,7 +192,7 @@ void Instance::recordCommandBuffer(vk::raii::CommandBuffer& cmd, uint32_t image)
     cmd.end();
 }
 
-vk::raii::SurfaceKHR Instance::createSurface() {
+vk::raii::SurfaceKHR tau::Instance::createSurface() {
     VkSurfaceKHR surface;
     glfwCreateWindowSurface(*instance, window, nullptr, &surface);
 
@@ -244,7 +284,7 @@ int deviceScore(vk::raii::PhysicalDevice& pd, vk::raii::SurfaceKHR& surface) {
     return score;
 }
 
-vk::raii::PhysicalDevice Instance::createPhysicalDevice() {
+vk::raii::PhysicalDevice tau::Instance::createPhysicalDevice() {
     auto devices = instance.enumeratePhysicalDevices();
 
     std::multimap<int, vk::raii::PhysicalDevice*> scores;
@@ -256,7 +296,7 @@ vk::raii::PhysicalDevice Instance::createPhysicalDevice() {
     return std::move(*scores.rbegin()->second);
 }
 
-vk::raii::Device Instance::createDevice() {
+vk::raii::Device tau::Instance::createDevice() {
     QueueFamilyIndices indices = queueFamilies(physicalDevice, surface);
 
     vk::DeviceQueueCreateInfo queueCreateInfo{};
@@ -333,7 +373,7 @@ vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, GL
     }
 }
 
-Swapchain Instance::createSwapchain() {
+tau::Swapchain tau::Instance::createSwapchain() {
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
 
     vk::SurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
@@ -393,7 +433,7 @@ Swapchain Instance::createSwapchain() {
     return swapchain;
 }
 
-vk::raii::CommandPool Instance::createCommandPool() {
+vk::raii::CommandPool tau::Instance::createCommandPool() {
     vk::CommandPoolCreateInfo cpci{};
     cpci.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
     cpci.queueFamilyIndex = queueFamilies(physicalDevice, surface).graphicsFamily.value();
@@ -401,7 +441,7 @@ vk::raii::CommandPool Instance::createCommandPool() {
     return vk::raii::CommandPool(device, cpci);
 }
 
-vk::raii::CommandBuffers Instance::createCommandBuffers() {
+vk::raii::CommandBuffers tau::Instance::createCommandBuffers() {
     vk::CommandBufferAllocateInfo cbai{};
     cbai.commandBufferCount = max_frames_in_flight;
     cbai.level = vk::CommandBufferLevel::ePrimary;
@@ -437,7 +477,7 @@ vk::Format findDepthFormat(vk::raii::PhysicalDevice& pd) {
     );
 }
 
-vk::raii::RenderPass Instance::createRenderPass() {
+vk::raii::RenderPass tau::Instance::createRenderPass() {
     vk::AttachmentDescription colorAttachment{};
     colorAttachment.format = swapchain.format;
     colorAttachment.samples = vk::SampleCountFlagBits::e1;
@@ -497,7 +537,7 @@ vk::raii::RenderPass Instance::createRenderPass() {
     return vk::raii::RenderPass(device, createInfo);
 }
 
-vk::raii::ImageView Instance::createImageView(VkImage image, vk::Format format, vk::ImageAspectFlagBits aspectFlags) {
+vk::raii::ImageView tau::Instance::createImageView(VkImage image, vk::Format format, vk::ImageAspectFlagBits aspectFlags) {
     vk::ImageViewCreateInfo viewInfo{};
     viewInfo.image = image;
     viewInfo.viewType = vk::ImageViewType::e2D;
@@ -511,7 +551,7 @@ vk::raii::ImageView Instance::createImageView(VkImage image, vk::Format format, 
     return vk::raii::ImageView(device, viewInfo);
 }
 
-vk::raii::CommandBuffer Instance::beginSingleCommand() {
+vk::raii::CommandBuffer tau::Instance::beginSingleCommand() {
     vk::CommandBufferAllocateInfo allocInfo{};
     allocInfo.commandPool = *commandPool;
     allocInfo.commandBufferCount = 1;
@@ -530,7 +570,7 @@ bool hasStencilComponent(vk::Format format) {
     return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
 }
 
-void Instance::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
+void tau::Instance::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
     auto cmd = beginSingleCommand();
 
     vk::ImageMemoryBarrier barrier{};
@@ -596,12 +636,14 @@ void Instance::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
     graphicsQueue.waitIdle();
 }
 
-/* void Instance::draw(element<Gradient> &e, vk::raii::CommandBuffer& cmd) {
+/* void tau::Instance::draw(element<Gradient> &e, vk::raii::CommandBuffer& cmd) {
     // cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *Gradient::state.playout, 0, {});
     // cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *Gradient::state.pipeline);
 } */
 
-Instance::Instance() {
+tau::Instance::Instance() {
+    current_instance = this;
+
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -671,26 +713,25 @@ Instance::Instance() {
         inFlightFences.push_back(device.createFence(fci));
     }
 
+    vk::DescriptorPoolSize poolSize{};
+    poolSize.type = vk::DescriptorType::eUniformBuffer;
+    poolSize.descriptorCount = static_cast<uint32_t>(max_frames_in_flight);
+
+    vk::DescriptorPoolCreateInfo dpci{};
+    dpci.maxSets = 32;
+    dpci.poolSizeCount = 1;
+    dpci.pPoolSizes = &poolSize;
+
+    descriptorPool = device.createDescriptorPool(dpci);
+
     pipe = createPipeline("vert.spv", "frag.spv");
 }
 
-Instance::~Instance() {
+tau::Instance::~Instance() {
     glfwDestroyWindow(window);
 }
 
-uint32_t findMemoryType(const vk::raii::PhysicalDevice& pd, uint32_t typeFilter, vk::MemoryPropertyFlagBits properties) {
-    vk::PhysicalDeviceMemoryProperties memProperties = pd.getMemoryProperties();
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("failed to find suitable memory type!");
-}
-
-Image Instance::createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlagBits usage, vk::MemoryPropertyFlagBits properties, vk::ImageAspectFlagBits aspect) {
+tau::Image tau::Instance::createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlagBits usage, vk::MemoryPropertyFlagBits properties, vk::ImageAspectFlagBits aspect) {
     vk::ImageCreateInfo imageInfo{};
     imageInfo.imageType = vk::ImageType::e2D;
     imageInfo.extent.width = width;
@@ -723,7 +764,7 @@ Image Instance::createImage(uint32_t width, uint32_t height, vk::Format format, 
     return img;
 }
 
-void Instance::createFramebuffersForSwapchain(Swapchain& swapchain) {
+void tau::Instance::createFramebuffersForSwapchain(Swapchain& swapchain) {
     for (size_t i = 0; i < swapchain.imageViews.size(); ++i) {
         vk::ImageView attachments[] = {
             *swapchain.imageViews[i],
@@ -742,7 +783,7 @@ void Instance::createFramebuffersForSwapchain(Swapchain& swapchain) {
     }
 }
 
-Image Instance::createDepthTexture() {
+tau::Image tau::Instance::createDepthTexture() {
     vk::Format depthFormat = findDepthFormat(physicalDevice);
 
     Image depth = createImage(swapchain.extent.width, swapchain.extent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eDepth);
@@ -751,7 +792,8 @@ Image Instance::createDepthTexture() {
 
     return depth;
 }
-void Swapchain::recreate(Instance &instance) {
+
+void tau::Swapchain::recreate(tau::Instance &instance) {
     int width = 0, height = 0;
     glfwGetFramebufferSize(instance.window, &width, &height);
     while (width == 0 || height == 0) {

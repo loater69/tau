@@ -19,7 +19,7 @@ vk::raii::ShaderModule createShaderModule(const vk::raii::Device& device, const 
     return vk::raii::ShaderModule(device, smci);
 }
 
-Pipeline Instance::createPipeline(const std::string& vert, const std::string& frag) {
+tau::Pipeline tau::Instance::createPipeline(const std::string& vert, const std::string& frag, std::span<vk::DescriptorSetLayout> sets) {
     auto vertModule = createShaderModule(device, vert);
     auto fragModule = createShaderModule(device, frag);
 
@@ -107,11 +107,13 @@ Pipeline Instance::createPipeline(const std::string& vert, const std::string& fr
 
     vk::PushConstantRange push_constant{};
     push_constant.stageFlags = vk::ShaderStageFlagBits::eVertex;
-    push_constant.size = sizeof(BoxConstants);
+    push_constant.size = sizeof(tau::BoxConstants);
 
     vk::PipelineLayoutCreateInfo plci{};
     plci.pushConstantRangeCount = 1;
     plci.pPushConstantRanges = &push_constant;
+    plci.setLayoutCount = sets.size();
+    plci.pSetLayouts = sets.data();
 
     vk::raii::PipelineLayout layout(device, plci);
 

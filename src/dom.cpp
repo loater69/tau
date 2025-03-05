@@ -1,6 +1,6 @@
 #include "dom.h"
 
-vk::raii::DescriptorSetLayout Gradient::createDescriptorSetLayout(Instance &i) {
+/* vk::raii::DescriptorSetLayout Gradient::createDescriptorSetLayout(Instance &i) {
     vk::DescriptorSetLayoutBinding dslb{};
     dslb.binding = 0;
     dslb.descriptorType = vk::DescriptorType::eUniformBuffer;
@@ -20,4 +20,10 @@ vk::raii::DescriptorSet Gradient::createDescriptorSet(Instance &i)
     allocInfo.pSetLayouts = 0;
 
     return std::move(i.device.allocateDescriptorSets(allocInfo)[0]);
+} */
+
+void tau::Component::element::render(tau::Instance& instance, vk::raii::CommandBuffer& cmd) {
+    if (!child) child = render_func();
+
+    child->render(instance, cmd);
 }
