@@ -22,8 +22,8 @@ vk::raii::DescriptorSet Gradient::createDescriptorSet(Instance &i)
     return std::move(i.device.allocateDescriptorSets(allocInfo)[0]);
 } */
 
-void tau::Component::element::render(tau::Instance& instance, vk::raii::CommandBuffer& cmd) {
+void tau::Component::element::render(tau::Instance& instance, int current_frame, vk::raii::CommandBuffer& cmd) {
     if (!child) child = render_func();
 
-    child->render(instance, cmd);
+    child->render(instance, current_frame, cmd);
 }

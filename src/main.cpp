@@ -7,7 +7,7 @@ struct ClickerProps {
 };
 
 const auto Clicker = tau::component<ClickerProps>([](ClickerProps props) mutable {
-    return tau::view{ .layout = tau::Flex{ .dimensions = { .x = 100_px }, .padding = { .x = 8_px, .y = 4_px } }, .style = tau::Border{ .corner_radius = 8, .width = 1, .color = tau::blue } }();
+    return tau::view{ .layout = tau::Flex{ .dimensions = { .x = 100_px }, .padding = { .x = 8_px, .y = 4_px } }, .style = tau::Gradient{ .from = tau::red, .to = tau::green } | tau::Border{ .corner_radius = 30, .width = 8, .color = tau::blue } }();
 });
 
 int main() {

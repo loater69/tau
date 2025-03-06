@@ -38,6 +38,13 @@ void tau::Instance::loop() {
 
 void tau::Instance::render(std::unique_ptr<ComponentElement>&& comp) {
     comp->child = comp->render_func();
+    comp->child->bounds = comp->child->layout->actualLayout({
+        .left = 0,
+        .top = 0,
+        .width = swapchain.extent.width,
+        .height = swapchain.extent.height
+    }, std::span<std::unique_ptr<element>>{}, 0);
+
     top_component = std::move(comp);
 
     loop();
@@ -96,7 +103,7 @@ void tau::Instance::frame() {
     device.resetFences({ *inFlightFences[currentFrame] });
 
     commandBuffers[currentFrame].reset();
-    recordCommandBuffer(commandBuffers[currentFrame], i);
+    recordCommandBuffer(commandBuffers[currentFrame], currentFrame, i);
 
     vk::SubmitInfo submitInfo{};
 
@@ -137,7 +144,7 @@ void tau::Instance::frame() {
     ++currentFrame %= max_frames_in_flight;
 }
 
-void tau::Instance::recordCommandBuffer(vk::raii::CommandBuffer& cmd, uint32_t image) {
+void tau::Instance::recordCommandBuffer(vk::raii::CommandBuffer& cmd, int frame, uint32_t image) {
     cmd.begin({});
 
     vk::RenderPassBeginInfo rpbi{};
@@ -176,16 +183,18 @@ void tau::Instance::recordCommandBuffer(vk::raii::CommandBuffer& cmd, uint32_t i
 
     cmd.setScissor(0, { scissor });
 
-    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipe.pipeline);
+    // cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipe.pipeline);
 
-    BoxConstants c;
-    c.position = { 0.5f, 0.5f };
-    c.scale = { 0.5f, 0.5f };
-    c.dimensions = { (int32_t)swapchain.extent.width, (int32_t)swapchain.extent.height };
+    // BoxConstants c;
+    // c.position = { 0.5f, 0.5f };
+    // c.scale = { 0.5f, 0.5f };
+    // c.dimensions = { (int32_t)swapchain.extent.width, (int32_t)swapchain.extent.height };
 
-    cmd.pushConstants<BoxConstants>(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, { c });
+    // cmd.pushConstants<BoxConstants>(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, { c });
 
-    cmd.draw(6, 1, 0, 0);
+    // cmd.draw(6, 1, 0, 0);
+
+    top_component->render(*this, frame, cmd);
 
     cmd.endRenderPass();
 

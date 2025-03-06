@@ -1,5 +1,4 @@
-#ifndef INSTANCE_H
-#define INSTANCE_H
+#pragma once
 
 #include <iostream>
 
@@ -16,6 +15,7 @@
 #include <map>
 #include <typeindex>
 #include <memory>
+#include <sstream>
 
 namespace tau {
     class Instance;
@@ -148,12 +148,25 @@ namespace tau {
             }
             
             for (size_t i = 0; i < max_frames_in_flight; ++i) {
-
                 vk::DescriptorBufferInfo bi{};
-                // bi.buffer = 
+                bi.buffer = *entry.buffers[i].buffer;
+                bi.offset = 0;
+                bi.range = size;
+                
+                vk::WriteDescriptorSet descriptorWrite{};
+                descriptorWrite.dstSet = *entry.sets[i];
+                descriptorWrite.dstBinding = 0;
+                descriptorWrite.dstArrayElement = 0;
+                descriptorWrite.descriptorType = vk::DescriptorType::eUniformBuffer;
+                descriptorWrite.descriptorCount = 1;
+                descriptorWrite.pBufferInfo = &bi;
+
+                device.updateDescriptorSets({ descriptorWrite }, nullptr);
             }
 
-            return nullptr;
+            pipeline_cache[typeid(Shader)] = std::move(entry);
+
+            return &pipeline_cache[typeid(Shader)];
         }
 
         std::unique_ptr<element> top_component;
@@ -169,7 +182,7 @@ namespace tau {
         std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
 
         void frame();
-        void recordCommandBuffer(vk::raii::CommandBuffer& cmd, uint32_t image);
+        void recordCommandBuffer(vk::raii::CommandBuffer& cmd, int frame, uint32_t image);
         
         vk::raii::SurfaceKHR createSurface();
         
@@ -191,7 +204,9 @@ namespace tau {
         // void draw(element<Gradient>& e, vk::raii::CommandBuffer& cmd);
         
         ~Instance();
-    };    
+    };
 }
 
-#endif
+#include "dom_impl.h"
+
+// #endif

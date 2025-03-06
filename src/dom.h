@@ -1,5 +1,4 @@
-#ifndef DOM_H
-#define DOM_H
+#pragma once
 
 #include <functional>
 #include <sstream>
@@ -19,10 +18,10 @@ namespace tau {
     struct vec4 {
         vec4() = default;
         constexpr inline vec4(uint32_t v) {
-            r = static_cast<float>(v & 0xff) / 250.0f;
-            g = static_cast<float>((v >> 8) & 0xff) / 250.0f;
-            b = static_cast<float>((v >> 16) & 0xff) / 250.0f;
-            a = static_cast<float>((v >> 24) & 0xff) / 250.0f;
+            a = static_cast<float>(v & 0xff) / 255.0f;
+            b = static_cast<float>((v >> 8) & 0xff) / 255.0f;
+            g = static_cast<float>((v >> 16) & 0xff) / 255.0f;
+            r = static_cast<float>((v >> 24) & 0xff) / 255.0f;
         }
 
         union {
@@ -67,7 +66,7 @@ namespace tau {
 
             T::code(n, code, functions, ubo);
 
-            std::string c = "#version 450\nlayout(location = 0) out vec4 outColor;\nlayout(location = 0) in vec2 uv;\n";
+            std::string c = "#version 450\nlayout(location = 0) out vec4 outColor;\nlayout(location = 0) in vec2 uv;\nlayout(location = 1) in vec2 dim;\n";
 
             c += "layout(binding = 0) uniform UBO {\n";
 
@@ -146,8 +145,8 @@ namespace tau {
             << "return length(max(abs(CenterPosition) - Size + Radius, 0.0)) - Radius;\n"
             << "}\n";
 
-            code << "float d = roundedBoxSDF(uv - vec2(0.5), vec2(0.5), 0.2);\n"
-            << "float d2 = roundedBoxSDF(uv - vec2(0.5), vec2(0.5 - (ubo.border_width" << n << " / 2.0)), 0.2);\n"
+            code << "vec2 size = dim;\nfloat d = roundedBoxSDF(uv * size - (size * 0.5), size * 0.5, ubo.border_radius" << n << ");\n"
+            << "float d2 = roundedBoxSDF(uv * size - (size * 0.5), size * 0.5 - vec2(ubo.border_width" << n << "), ubo.border_radius" << n << " - ubo.border_width" << n << ");\n"
             << "if (d > 0.0) discard;\n"
             << "outColor = d2 > 0.0 ? ubo.border_color" << n << " : outColor;\n";
 
@@ -175,22 +174,22 @@ namespace tau {
         }
 
         void write_to(char*& p) const {
-            float v = corner_radius;
+            float v = width;
             
-            while (!((size_t)p & 0b11)) ++p;
+            while (((size_t)p & 0b11) != 0) ++p;
 
             *(float*)p = v;
 
             p += 4;
 
-            v = width;
+            v = corner_radius;
 
-            while (!((size_t)p & 0b11)) ++p;
+            while (((size_t)p & 0b11) != 0) ++p;
             *(float*)p = v;
             
             p += 4;
 
-            while (!((size_t)p & 0b1111)) ++p;
+            while (((size_t)p & 0b1111) != 0) ++p;
         
             *(tau::color*)p = color;
 
@@ -203,7 +202,7 @@ namespace tau {
         color to;
 
         static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions, std::ostringstream& ubo) {
-            code << "outColor = mix(ubo.from" << n << ", ubo.to" << n << ", uv.y)\n";
+            code << "outColor = mix(ubo.from" << n << ", ubo.to" << n << ", uv.y);\n";
 
             ubo << "vec4 from" << n << ";\nvec4 to" << n << ";\n";
 
@@ -223,7 +222,17 @@ namespace tau {
         }
 
         void write_to(char*& p) const {
+            while (((size_t)p & 0b1111) != 0) ++p;
 
+            *(color*)p = from;
+
+            p += 16;
+
+            while (((size_t)p & 0b1111) != 0) ++p;
+
+            *(color*)p = to;
+
+            p += 16;
         }
     };
 
@@ -238,7 +247,7 @@ namespace tau {
         Box bounds;
         std::unique_ptr<Layout> layout;
 
-        virtual void render(Instance& instance, vk::raii::CommandBuffer&) = 0;
+        virtual void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&) = 0;
     };
 
     struct Flow {
@@ -379,14 +388,17 @@ namespace tau {
 
         struct element : ::tau::element {
             PipelineCacheEntry* pipeline;
+            Shader style;
 
-            void render(Instance& instance, vk::raii::CommandBuffer&);
+            void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&);
         };
 
         std::unique_ptr<element> operator ()() {
             auto e = std::make_unique<element>();
 
             e->pipeline = Instance::current_instance->template get_shader<Shader>();
+            e->layout = std::move(layout);
+            e->style = std::move(style);
 
             return e;
         }
@@ -398,7 +410,7 @@ namespace tau {
             std::unique_ptr<tau::element> child;
             std::type_index type = typeid(void);
 
-            void render(Instance& instance, vk::raii::CommandBuffer&);
+            void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&);
 
             /* inline void diff_check(std::stack<diff_entry>& s) noexcept {
                 auto t = s.top();
@@ -456,11 +468,27 @@ namespace tau {
 
         return DerivedComponent{};
     }
+    /* template<typename Shader>
+    void view<Shader>::element::render(Instance& instance, int current_frame, vk::raii::CommandBuffer& cmd) {
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline->pipeline.pipeline);
 
-    template<typename Shader>
-    void view<Shader>::element::render(Instance& instance, vk::raii::CommandBuffer& cmd) {
+        float w = (float)bounds.width / (float)instance.swapchain.extent.width;
+        float h = (float)bounds.height / (float)instance.swapchain.extent.height;
 
-    }
+        float x = ((float)bounds.left / (float)instance.swapchain.extent.width) + 0.5f * w;
+        float y = ((float)bounds.top / (float)instance.swapchain.extent.height) + 0.5f * h;
+
+        BoxConstants c;
+        c.position = { x, y };
+        c.scale = { w, h };
+        c.dimensions = { (int32_t)instance.swapchain.extent.width, (int32_t)instance.swapchain.extent.height };
+
+        cmd.pushConstants<BoxConstants>(*pipeline->pipeline.layout, vk::ShaderStageFlagBits::eVertex, 0, { c });
+
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipeline->pipeline.layout, 0, { pipeline->sets[current_frame] }, nullptr);
+
+        cmd.draw(6, 1, 0, 0);
+    } */
 }
 
-#endif
+// #endif
