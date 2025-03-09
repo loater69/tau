@@ -1,4 +1,5 @@
-#pragma once
+#ifndef INSTANCE_H
+#define INSTANCE_H
 
 #include <iostream>
 
@@ -51,6 +52,7 @@ namespace tau {
 
     struct PipelineCacheEntry {
         Pipeline pipeline;
+        vk::raii::DescriptorPool descriptorPool = nullptr;
         vk::raii::DescriptorSetLayout layout = nullptr;
         std::vector<vk::raii::DescriptorSet> sets;
         std::vector<UniformBuffer> buffers;
@@ -78,8 +80,6 @@ namespace tau {
         std::vector<vk::raii::Semaphore> imageAvailableSemaphores;
         std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
         std::vector<vk::raii::Fence> inFlightFences;
-        vk::raii::DescriptorPool descriptorPool = nullptr;
-        Pipeline pipe;
 
         std::map<std::type_index, PipelineCacheEntry> pipeline_cache;
 
@@ -100,6 +100,17 @@ namespace tau {
             system(cmd.str().c_str());
 
             PipelineCacheEntry entry;
+
+            vk::DescriptorPoolSize poolSize{};
+            poolSize.type = vk::DescriptorType::eUniformBuffer;
+            poolSize.descriptorCount = static_cast<uint32_t>(max_frames_in_flight);
+
+            vk::DescriptorPoolCreateInfo dpci{};
+            dpci.maxSets = 32;
+            dpci.poolSizeCount = 1;
+            dpci.pPoolSizes = &poolSize;
+
+            entry.descriptorPool = device.createDescriptorPool(dpci);
 
             // create descriptor set layout
 
@@ -124,7 +135,7 @@ namespace tau {
             for (size_t i = 0; i < max_frames_in_flight; ++i) arr[i] = *entry.layout;
 
             vk::DescriptorSetAllocateInfo allocInfo{};
-            allocInfo.descriptorPool = *descriptorPool;
+            allocInfo.descriptorPool = *entry.descriptorPool;
             allocInfo.descriptorSetCount = arr.size();
             allocInfo.pSetLayouts = arr.data();
 
@@ -169,7 +180,7 @@ namespace tau {
             return &pipeline_cache[typeid(Shader)];
         }
 
-        std::unique_ptr<element> top_component;
+        std::unique_ptr<ComponentElement> top_component;
         
         int currentFrame = 0;
         bool framebufferResized = false;
@@ -209,4 +220,4 @@ namespace tau {
 
 #include "dom_impl.h"
 
-// #endif
+#endif

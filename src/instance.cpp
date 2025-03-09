@@ -38,12 +38,12 @@ void tau::Instance::loop() {
 
 void tau::Instance::render(std::unique_ptr<ComponentElement>&& comp) {
     comp->child = comp->render_func();
-    comp->child->bounds = comp->child->layout->actualLayout({
+    comp->child->bounds = comp->child->layout->layout({
         .left = 0,
         .top = 0,
         .width = swapchain.extent.width,
         .height = swapchain.extent.height
-    }, std::span<std::unique_ptr<element>>{}, 0);
+    }, *comp->child);
 
     top_component = std::move(comp);
 
@@ -95,6 +95,12 @@ void tau::Instance::frame() {
 
     if (res == vk::Result::eErrorOutOfDateKHR) {
         swapchain.recreate(*this);
+        top_component->child->bounds = top_component->child->layout->layout({
+            .left = 0,
+            .top = 0,
+            .width = swapchain.extent.width,
+            .height = swapchain.extent.height
+        }, *top_component->child);
         return;
     } else if (res != vk::Result::eSuccess && res != vk::Result::eSuboptimalKHR) {
         throw std::runtime_error("failed to present swap chain image!");
@@ -137,6 +143,12 @@ void tau::Instance::frame() {
     if (res == vk::Result::eErrorOutOfDateKHR || res == vk::Result::eSuboptimalKHR || framebufferResized) {
         framebufferResized = false;
         swapchain.recreate(*this);
+        top_component->child->bounds = top_component->child->layout->layout({
+            .left = 0,
+            .top = 0,
+            .width = swapchain.extent.width,
+            .height = swapchain.extent.height
+        }, *top_component->child);
     } else if (res != vk::Result::eSuccess) {
         throw std::runtime_error("failed to present swap chain image!");
     }
@@ -721,19 +733,6 @@ tau::Instance::Instance() {
         renderFinishedSemaphores.push_back(device.createSemaphore(sci));
         inFlightFences.push_back(device.createFence(fci));
     }
-
-    vk::DescriptorPoolSize poolSize{};
-    poolSize.type = vk::DescriptorType::eUniformBuffer;
-    poolSize.descriptorCount = static_cast<uint32_t>(max_frames_in_flight);
-
-    vk::DescriptorPoolCreateInfo dpci{};
-    dpci.maxSets = 32;
-    dpci.poolSizeCount = 1;
-    dpci.pPoolSizes = &poolSize;
-
-    descriptorPool = device.createDescriptorPool(dpci);
-
-    pipe = createPipeline("vert.spv", "frag.spv");
 }
 
 tau::Instance::~Instance() {

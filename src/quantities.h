@@ -44,11 +44,11 @@ namespace tau {
         }
 
         constexpr ::tau::Quantity operator ""_per (long double v) {
-            return { .type = quantity_t::percentage, .value = static_cast<float>(v) };
+            return { .type = quantity_t::percentage, .value = static_cast<float>(v) / 100.0f };
         }
 
         constexpr ::tau::Quantity operator ""_per (uint64_t v) {
-            return { .type = quantity_t::percentage, .value = static_cast<float>(v) };
+            return { .type = quantity_t::percentage, .value = static_cast<float>(v) / 100.0f };
         }
     }
 }

@@ -1,24 +1,21 @@
-#pragma once
+#ifndef DOM_IMPL_H
+#define DOM_IMPL_H
 
 #include "instance.h"
 
 namespace tau {
-    struct test {
-        alignas(4) float w = 2.0f;
-        alignas(4) float r = 4.0f;
-        alignas(16) color c = tau::red;
-    };
-
     template<typename Shader>
     void view<Shader>::element::render(Instance& instance, int current_frame, vk::raii::CommandBuffer& cmd) {
+        for (size_t i = 0; i < children.size(); ++i) children[i]->render(instance, current_frame, cmd);
+
         cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline->pipeline.pipeline);
-
-        float w = 0.5f;// (float)bounds.width / (float)instance.swapchain.extent.width;
-        float h = 0.5f;// (float)bounds.height / (float)instance.swapchain.extent.height;
-
-        float x = 0.5f;// ((float)bounds.left / (float)instance.swapchain.extent.width) - 0.5f * w;
-        float y = 0.5f;// ((float)bounds.top / (float)instance.swapchain.extent.height) - 0.5f * h;
-
+        
+        float w = (float)content.width / (float)instance.swapchain.extent.width;
+        float h = (float)content.height / (float)instance.swapchain.extent.height;
+        
+        float x = -1.0f + (2.0f * (float)content.left / (float)instance.swapchain.extent.width) + w;
+        float y = -1.0f + (2.0f * (float)content.top / (float)instance.swapchain.extent.height) + h;
+        
         style.write((char*)pipeline->buffers[current_frame].mapped);
 
         // test t{};
@@ -36,3 +33,5 @@ namespace tau {
         cmd.draw(6, 1, 0, 0);
     }
 }
+
+#endif

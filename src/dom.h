@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DOM_H
+#define DOM_H
 
 #include <functional>
 #include <sstream>
@@ -7,6 +8,7 @@
 #include <sstream>
 #include <memory>
 #include <vulkan/vulkan_raii.hpp>
+#include <iostream>
 
 #include "box.h"
 #include "quantities.h"
@@ -41,6 +43,10 @@ namespace tau {
     };
 
     using color = vec4;
+
+    constexpr color rgb(int r, int g, int b) {
+        return 0xff | (r << 24) | (g << 16) | (b << 8);
+    }
 
     constexpr inline color white = 0xffffffff;
     constexpr inline color red = 0xff0000ff;
@@ -239,18 +245,31 @@ namespace tau {
     struct element;
     
     struct Layout {
-        virtual Box preferredLayout(Box, const std::span<std::unique_ptr<element>>) const = 0;
-        virtual Box actualLayout(Box, const std::span<std::unique_ptr<element>>, size_t i) const = 0;
+        template<typename T>
+        bool is() const {
+            return dynamic_cast<const T*>(this) != nullptr;
+        }
+
+        template<typename T>
+        T* to() {
+            return dynamic_cast<T*>(this);
+        }
+
+        virtual Box layout(Box, element& el) const = 0;
     };
     
     struct element {
         Box bounds;
+        Box content;
         std::unique_ptr<Layout> layout;
+        std::vector<std::unique_ptr<element>> children;
 
         virtual void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&) = 0;
     };
+    
+    using elements = std::vector<std::unique_ptr<element>>;
 
-    struct Flow {
+    struct Block {
         Quantity2D dimensions;
         Quantity2D padding;
         Quantity2D margin;
@@ -260,33 +279,45 @@ namespace tau {
             Quantity2D padding;
             Quantity2D margin;
 
-            Box preferredLayout(Box, const std::span<std::unique_ptr<element>> els) const {
-                // left-to-right
+            Box layout(Box available, element& el) const {
+                Box b = available;
 
-                uint32_t max_h = 0;
-                uint32_t width = 0;
+                if (dimensions.x.has_value()) b.width = dimensions.x.value().pixels_relative_to(available.width);
 
-                for (size_t i = 0; i < els.size(); ++i) {
-                    auto box = els[i]->layout->preferredLayout({}, std::span{(std::unique_ptr<element>*)nullptr, 0});
+                if (dimensions.y.has_value()) b.height = dimensions.y.value().pixels_relative_to(available.width);
 
-                    width += box.width;
+                Box contentAv = b;
 
-                    if (box.height > max_h) max_h = box.height;
+                contentAv.left += margin.x.value_or(0_px).pixels_relative_to(available.width);
+                contentAv.left += padding.x.value_or(0_px).pixels_relative_to(b.width);
+
+                contentAv.width -= 2 * margin.x.value_or(0_px).pixels_relative_to(available.width);
+                contentAv.width -= 2 * padding.x.value_or(0_px).pixels_relative_to(b.width);
+
+                contentAv.top += margin.y.value_or(0_px).pixels_relative_to(available.width);
+                contentAv.top += padding.y.value_or(0_px).pixels_relative_to(b.width);
+
+                contentAv.height -= 2 * margin.y.value_or(0_px).pixels_relative_to(available.width);
+                contentAv.height -= 2 * padding.y.value_or(0_px).pixels_relative_to(b.width);
+
+                for (size_t i = 0; i < el.children.size(); ++i) {
+                    el.children[i]->bounds = el.children[i]->layout->layout(contentAv, *el.children[i]);
+                    
+                    contentAv.top += el.children[i]->bounds.height;
+                    // contentAv.height -= el.children[i]->bounds.height;
                 }
 
-                if (dimensions.x.has_value()) width = dimensions.x.value().value;
-                if (dimensions.y.has_value()) max_h = dimensions.y.value().value;
+                if (!dimensions.y.has_value()) b.height = contentAv.top + margin.y.value_or(0_px).pixels_relative_to(available.width) + padding.y.value_or(0_px).pixels_relative_to(b.width);
 
-                width += padding.x.value_or<Quantity>(0_px).value;
+                el.content = b;
 
-                return {
-                    .width = width,
-                    .height = max_h
-                };
-            }
-    
-            Box actualLayout(Box, const std::span<std::unique_ptr<element>>, size_t i) const {
-                return Box{};
+                el.content.left += margin.x.value_or(0_px).pixels_relative_to(available.width);
+                el.content.width -= 2 * margin.x.value_or(0_px).pixels_relative_to(available.width);
+
+                el.content.top += margin.y.value_or(0_px).pixels_relative_to(available.width);
+                el.content.height -= 2 * margin.y.value_or(0_px).pixels_relative_to(available.width);
+
+                return b;
             }
         };
 
@@ -299,6 +330,10 @@ namespace tau {
 
             return impl;
         }
+    };
+
+    struct Horizontal {
+
     };
 
     struct Flex {
@@ -335,14 +370,14 @@ namespace tau {
                 uint32_t width = 0;
 
                 for (size_t i = 0; i < els.size(); ++i) {
-                    auto box = els[i]->layout->preferredLayout({
+                    /* auto box = els[i]->layout->layout({
                         .width = b.width - 2 * padding.x.value_or(0_px).pixels_relative_to(width) - 2 * margin.x.value_or(0_px).pixels_relative_to(b.width) - width,
                         .height = b.height - 2 * padding.y.value_or(0_px).pixels_relative_to(width) - 2 * margin.y.value_or(0_px).pixels_relative_to(b.height)
-                    }, std::span{(std::unique_ptr<element>*)nullptr, 0});
+                    }, );
 
                     width += box.width;
 
-                    if (box.height > max_h) max_h = box.height;
+                    if (box.height > max_h) max_h = box.height; */
                 }
 
                 if (dimensions.x.has_value()) width = dimensions.x.value().value;
@@ -360,8 +395,8 @@ namespace tau {
                 };
             }
     
-            Box actualLayout(Box, const std::span<std::unique_ptr<element>>, size_t i) const {
-                return Box{ .left = 0, .top = 0, .width = 100, .height = 20 };
+            Box layout(Box, element&) const {
+                return Box{ .left = 10, .top = 10, .width = 200, .height = 50 };
             }
         };
 
@@ -393,12 +428,13 @@ namespace tau {
             void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&);
         };
 
-        std::unique_ptr<element> operator ()() {
+        std::unique_ptr<element> operator ()(elements&& els = elements{}) {
             auto e = std::make_unique<element>();
 
             e->pipeline = Instance::current_instance->template get_shader<Shader>();
             e->layout = std::move(layout);
             e->style = std::move(style);
+            e->children = std::move(els);
 
             return e;
         }
@@ -489,6 +525,9 @@ namespace tau {
 
         cmd.draw(6, 1, 0, 0);
     } */
+
+    elements operator | (std::unique_ptr<element>&&, std::unique_ptr<element>&&);
+    elements operator | (elements&&, std::unique_ptr<element>&&);
 }
 
-// #endif
+#endif
