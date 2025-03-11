@@ -9,6 +9,7 @@
 #include <memory>
 #include <vulkan/vulkan_raii.hpp>
 #include <iostream>
+#include <string>
 
 #include "box.h"
 #include "quantities.h"
@@ -16,6 +17,7 @@
 namespace tau {
     class Instance;
     struct Pipeline;
+    struct CombinedImage;
 
     struct vec4 {
         vec4() = default;
@@ -72,6 +74,8 @@ namespace tau {
 
             T::code(n, code, functions, ubo);
 
+            if (ubo.str().empty()) ubo << "int filler;\n";
+
             std::string c = "#version 450\nlayout(location = 0) out vec4 outColor;\nlayout(location = 0) in vec2 uv;\nlayout(location = 1) in vec2 dim;\n";
 
             c += "layout(binding = 0) uniform UBO {\n";
@@ -98,12 +102,22 @@ namespace tau {
         void write(this const T& t, char* p) {
             t.write_to(p);
         }
+
+        static void poolSizes(std::vector<vk::DescriptorPoolSize>& pss) {}
+
+        /* static void bindings(std::vector<vk::DescriptorSetLayoutBinding>& bindings) {}
+        static void  */
     };
 
     template<std::derived_from<Style> Left, std::derived_from<Style> Right>
     struct Style::Convolved : Style {
         Left l;
         Right r;
+
+        void init() {
+            l.init();
+            r.init();
+        }
 
         static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions, std::ostringstream& ubo) {
             ++n;
@@ -122,6 +136,21 @@ namespace tau {
             l.write_to(p);
             r.write_to(p);
         }
+
+        static void bindings(std::vector<vk::DescriptorSetLayoutBinding>& bindings) {
+            Left::bindings(bindings);
+            Right::bindings(bindings);
+        }
+
+        void write_bindings(size_t& n, vk::raii::Device& device, vk::raii::DescriptorSet& set) {
+            l.write_bindings(n, device, set);
+            r.write_bindings(n, device, set);
+        }
+
+        static void poolSizes(std::vector<vk::DescriptorPoolSize>& pss) {
+            Left::poolSizes(pss);
+            Right::poolSizes(pss);
+        }
     };
 
     template<typename This, std::derived_from<Style> Right>
@@ -135,16 +164,25 @@ namespace tau {
     }
 
     struct Default : Style {
+        void init() {}
 
         constexpr static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions, std::ostringstream& ubo) {
             ++n;
         }
+
+        static void bindings(std::vector<vk::DescriptorSetLayoutBinding>& bindings) {}
+
+        void write_bindings(size_t& n, vk::raii::Device& device, vk::raii::DescriptorSet& set) {}
+
+        static void poolSizes(std::vector<vk::DescriptorPoolSize>& pss) {}
     };
 
     struct Border : Style {
         int corner_radius = 0;
         int width = 0;
         color color;
+
+        void init() {}
 
         static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions, std::ostringstream& ubo) {
             functions << "float roundedBoxSDF(vec2 CenterPosition, vec2 Size, float Radius) {\n"
@@ -201,11 +239,19 @@ namespace tau {
 
             p += 16;
         }
+
+        static void bindings(std::vector<vk::DescriptorSetLayoutBinding>& bindings) {}
+
+        void write_bindings(size_t& n, vk::raii::Device& device, vk::raii::DescriptorSet& set) {}
+
+        static void poolSizes(std::vector<vk::DescriptorPoolSize>& pss) {}
     };
 
     struct Gradient : Style {
         color from;
         color to;
+
+        void init() {}
 
         static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions, std::ostringstream& ubo) {
             code << "outColor = mix(ubo.from" << n << ", ubo.to" << n << ", uv.y);\n";
@@ -240,6 +286,49 @@ namespace tau {
 
             p += 16;
         }
+
+        static void bindings(std::vector<vk::DescriptorSetLayoutBinding>& bindings) {}
+
+        void write_bindings(size_t& n, vk::raii::Device& device, vk::raii::DescriptorSet& set) {}
+
+        static void poolSizes(std::vector<vk::DescriptorPoolSize>& pss) {}
+    };
+
+    struct ImageBG : Style {
+        std::string src;
+        tau::CombinedImage* image;
+
+        void init();
+
+        static void code(size_t& n, std::ostringstream& code, std::ostringstream& functions, std::ostringstream& ubo) {
+            functions << "layout(binding = 1) uniform sampler2D Sampler;\n";
+
+            code << "outColor = texture(Sampler, uv);\n";
+
+            ++n;
+        }
+
+        static size_t size(size_t n) {
+            return n;
+        }
+
+        void write_to(char*& p) const {
+            
+        }
+
+        static void bindings(std::vector<vk::DescriptorSetLayoutBinding>& bindings) {
+            vk::DescriptorSetLayoutBinding dslb{};
+            dslb.binding = bindings.size();
+            dslb.descriptorCount = 1;
+            dslb.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+            dslb.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+            bindings.push_back(dslb);
+        }
+
+        void write_bindings(size_t& n, vk::raii::Device& device, vk::raii::DescriptorSet& set);
+
+        static void poolSizes(std::vector<vk::DescriptorPoolSize>& pss);
     };
 
     struct element;
@@ -258,11 +347,17 @@ namespace tau {
         virtual Box layout(Box, element& el) const = 0;
     };
     
+    struct Cascade {
+        const char* font;
+        int font_size;
+    };
+
     struct element {
         Box bounds;
         Box content;
         std::unique_ptr<Layout> layout;
         std::vector<std::unique_ptr<element>> children;
+        std::string text;
 
         virtual void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&) = 0;
     };
@@ -434,10 +529,22 @@ namespace tau {
             e->pipeline = Instance::current_instance->template get_shader<Shader>();
             e->layout = std::move(layout);
             e->style = std::move(style);
+            e->style.init();
             e->children = std::move(els);
 
             return e;
         }
+    };
+
+    struct span {
+
+    };
+
+    struct text {
+        struct element : tau::element {
+
+            void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&);
+        };
     };
 
     struct Component {

@@ -2,8 +2,7 @@
 #define BOX_H
 
 #include <cstdint>
-
-#include "quantities.h"
+#include <optional>
 
 namespace tau {
     struct Box {

@@ -17,6 +17,8 @@ namespace tau {
         float y = -1.0f + (2.0f * (float)content.top / (float)instance.swapchain.extent.height) + h;
         
         style.write((char*)pipeline->buffers[current_frame].mapped);
+        size_t n = 1;
+        style.write_bindings(n, instance.device, pipeline->sets[current_frame]);
 
         // test t{};
         // std::memcpy(pipeline->buffers[current_frame].mapped, &t, sizeof(test));

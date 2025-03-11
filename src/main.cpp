@@ -23,6 +23,9 @@ const auto Clicker = tau::component<ClickerProps>([](ClickerProps props) mutable
         }() | tau::view{
             .layout = tau::Block{ .dimensions = { .x = 25_per, .y = 82_px }, .margin = { .x = 16_px, .y = 16_px } },
             .style = tau::Gradient{ .from = tau::red, .to = tau::green }
+        }() | tau::view{
+            .layout = tau::Block{ .dimensions = { .x = 256_px, .y = 256_px } },
+            .style = tau::ImageBG{ .src = "res/tau.png" }
         }()
     );
 });

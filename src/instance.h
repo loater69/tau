@@ -38,6 +38,11 @@ namespace tau {
         vk::raii::ImageView view = nullptr;
         vk::raii::DeviceMemory memory = nullptr;
     };
+
+    struct CombinedImage {
+        Image img;
+        vk::raii::Sampler sampler = nullptr;
+    };
     
     struct Pipeline {
         vk::raii::PipelineLayout layout = nullptr;
@@ -82,6 +87,7 @@ namespace tau {
         std::vector<vk::raii::Fence> inFlightFences;
 
         std::map<std::type_index, PipelineCacheEntry> pipeline_cache;
+        std::map<std::string, CombinedImage> image_cache;
 
         template<typename Shader>
         PipelineCacheEntry* get_shader() {
@@ -105,10 +111,15 @@ namespace tau {
             poolSize.type = vk::DescriptorType::eUniformBuffer;
             poolSize.descriptorCount = static_cast<uint32_t>(max_frames_in_flight);
 
+            std::vector<vk::DescriptorPoolSize> pss;
+            pss.push_back(poolSize);
+
+            Shader::poolSizes(pss);
+
             vk::DescriptorPoolCreateInfo dpci{};
             dpci.maxSets = 32;
-            dpci.poolSizeCount = 1;
-            dpci.pPoolSizes = &poolSize;
+            dpci.poolSizeCount = pss.size();
+            dpci.pPoolSizes = pss.data();
 
             entry.descriptorPool = device.createDescriptorPool(dpci);
 
@@ -120,9 +131,14 @@ namespace tau {
             binding.descriptorCount = 1;
             binding.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
+            std::vector<vk::DescriptorSetLayoutBinding> bindings;
+            bindings.push_back(binding);
+
+            Shader::bindings(bindings);
+
             vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-            layoutInfo.bindingCount = 1;
-            layoutInfo.pBindings = &binding;
+            layoutInfo.bindingCount = bindings.size();
+            layoutInfo.pBindings = bindings.data();
 
             entry.layout = device.createDescriptorSetLayout(layoutInfo);
 
@@ -142,6 +158,8 @@ namespace tau {
             entry.sets = device.allocateDescriptorSets(allocInfo);
 
             auto size = Shader{}.get_size();
+
+            if (size == 0) size = 4;
 
             std::cout << size << '\n';
 
@@ -180,6 +198,8 @@ namespace tau {
             return &pipeline_cache[typeid(Shader)];
         }
 
+        CombinedImage* getImage(std::string& img);
+
         std::unique_ptr<ComponentElement> top_component;
         
         int currentFrame = 0;
@@ -208,7 +228,8 @@ namespace tau {
         vk::raii::RenderPass createRenderPass();
         Pipeline createPipeline(const std::string& vert, const std::string& frag, std::span<vk::DescriptorSetLayout> sets = std::span<vk::DescriptorSetLayout>{});
         
-        Image createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlagBits usage, vk::MemoryPropertyFlagBits properties, vk::ImageAspectFlagBits aspect);
+        Image createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlagBits properties, vk::ImageAspectFlagBits aspect);
+        Image loadColorTexture(const char* path);
         vk::raii::ImageView createImageView(VkImage image, vk::Format format, vk::ImageAspectFlagBits aspectFlags);
         vk::raii::CommandBuffer beginSingleCommand();
         void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);

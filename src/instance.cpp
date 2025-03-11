@@ -662,6 +662,35 @@ void tau::Instance::transitionImageLayout(vk::Image image, vk::Format format, vk
     // cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *Gradient::state.pipeline);
 } */
 
+tau::CombinedImage* tau::Instance::getImage(std::string& img) {
+    if (image_cache.contains(img)) return &image_cache.at(img);
+
+    tau::CombinedImage image;
+    image.img = loadColorTexture(img.c_str());
+
+    vk::SamplerCreateInfo sci{};
+    sci.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+    sci.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+    sci.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+    sci.anisotropyEnable = false;
+    sci.minFilter = vk::Filter::eNearest;
+    sci.magFilter = vk::Filter::eNearest;
+    sci.unnormalizedCoordinates = false;
+    sci.compareEnable = false;
+    sci.compareOp = vk::CompareOp::eAlways;
+    sci.mipmapMode = vk::SamplerMipmapMode::eNearest;
+    sci.mipLodBias = 0.0f;
+    sci.minLod = 0.0f;
+    sci.maxLod = 0.0f;
+    sci.borderColor = vk::BorderColor::eIntOpaqueBlack;
+
+    image.sampler = device.createSampler(sci);
+
+    image_cache[img] = std::move(image);
+
+    return &image_cache[img];
+}
+
 tau::Instance::Instance() {
     current_instance = this;
 
@@ -739,7 +768,7 @@ tau::Instance::~Instance() {
     glfwDestroyWindow(window);
 }
 
-tau::Image tau::Instance::createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlagBits usage, vk::MemoryPropertyFlagBits properties, vk::ImageAspectFlagBits aspect) {
+tau::Image tau::Instance::createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlagBits properties, vk::ImageAspectFlagBits aspect) {
     vk::ImageCreateInfo imageInfo{};
     imageInfo.imageType = vk::ImageType::e2D;
     imageInfo.extent.width = width;
@@ -770,6 +799,59 @@ tau::Image tau::Instance::createImage(uint32_t width, uint32_t height, vk::Forma
     img.view = createImageView(*img.image, format, aspect);
 
     return img;
+}
+
+#include <stb_image.h>
+
+tau::Image tau::Instance::loadColorTexture(const char *path) {
+    int x;
+    int y;
+    int channels;
+
+    auto data =  stbi_load(path, &x, &y, &channels, STBI_rgb_alpha);
+
+    auto image = createImage(x, y, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eColor);
+
+    transitionImageLayout(*image.image, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+
+    vk::DeviceSize imageSize = x * y * STBI_rgb_alpha;
+
+    auto[buffer, mem] = createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    auto mapped = mem.mapMemory(0, imageSize);
+    std::memcpy(mapped, data, imageSize);
+    mem.unmapMemory();
+
+    stbi_image_free(data);
+
+    auto cmd = beginSingleCommand();
+
+    vk::BufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = vk::Offset3D{0, 0, 0};
+    region.imageExtent = vk::Extent3D{static_cast<uint32_t>(x), static_cast<uint32_t>(y), 1};
+
+    cmd.copyBufferToImage(*buffer, *image.image, vk::ImageLayout::eTransferDstOptimal, { region });
+    
+    cmd.end();
+    
+    vk::CommandBuffer cb = *cmd;
+    
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cb;
+    
+    graphicsQueue.submit({ submitInfo });
+    graphicsQueue.waitIdle();
+
+    transitionImageLayout(*image.image, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    return image;
 }
 
 void tau::Instance::createFramebuffersForSwapchain(Swapchain& swapchain) {
