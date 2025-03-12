@@ -18,6 +18,7 @@ namespace tau {
     class Instance;
     struct Pipeline;
     struct CombinedImage;
+    struct Font;
 
     struct vec4 {
         vec4() = default;
@@ -357,7 +358,6 @@ namespace tau {
         Box content;
         std::unique_ptr<Layout> layout;
         std::vector<std::unique_ptr<element>> children;
-        std::string text;
 
         virtual void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&) = 0;
     };
@@ -506,6 +506,10 @@ namespace tau {
         }
     };
 
+    struct SpanLayout : Layout {
+        Box layout(Box av, element& el) const;
+    };
+
     struct PipelineCacheEntry;
 
     #define element_props \
@@ -537,7 +541,16 @@ namespace tau {
     };
 
     struct span {
+        std::string font = "res/MontserratRegular-BWBEl.ttf";
 
+        struct element : tau::element {
+            std::string text;
+            Font* font;
+
+            void render(Instance& instance, int current_frame, vk::raii::CommandBuffer&);
+        };
+
+        std::unique_ptr<element> operator ()(std::string txt);
     };
 
     struct text {

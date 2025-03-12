@@ -25,8 +25,8 @@ const auto Clicker = tau::component<ClickerProps>([](ClickerProps props) mutable
             .style = tau::Gradient{ .from = tau::red, .to = tau::green }
         }() | tau::view{
             .layout = tau::Block{ .dimensions = { .x = 256_px, .y = 256_px } },
-            .style = tau::ImageBG{ .src = "res/tau.png" }
-        }()
+            .style = tau::ImageBG{ .src = "res/tau.png" } | tau::Border{ .corner_radius = 128, .width = 2, .color = tau::rgb(234, 0, 255) }
+        }() | tau::span{}("Tau is sick af")
     );
 });
 

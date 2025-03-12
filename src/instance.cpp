@@ -691,6 +691,85 @@ tau::CombinedImage* tau::Instance::getImage(std::string& img) {
     return &image_cache[img];
 }
 
+tau::Font* tau::Instance::getFont(std::string& font) {
+    if (font_cache.contains(font)) return &font_cache[font];
+
+    tau::Font fo;
+
+    std::ifstream file(font, std::ios::ate | std::ios::binary);
+    auto size = file.tellg();
+    fo.buffer.resize(size);
+    file.seekg(0);
+    file.read(fo.buffer.data(), size);
+
+    stbtt_InitFont(&fo.info, (unsigned char*)fo.buffer.data(), 0);
+
+    fo.scale = stbtt_ScaleForPixelHeight(&fo.info, 64.0f);
+
+    for (size_t i = 0; i < fo.chars.size(); ++i) {
+        auto& fc = fo.chars[i];
+        int x;
+        int y;
+        int w;
+        int h;
+
+        fc.data = stbtt_GetCodepointSDF(&fo.info, fo.scale, i, 3, 128, 64.0f, &w, &h, &x, &y);
+        fc.x = x;
+        fc.y = y;
+        fc.w = w;
+        fc.h = h;
+
+        int advance;
+        stbtt_GetCodepointHMetrics(&fo.info, i, &advance, nullptr);
+        fc.advance = advance * fo.scale;
+    }
+
+    auto& ch = fo.chars['a'];
+
+    auto image = createImage(ch.w, ch.h, vk::Format::eR8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eColor);
+
+    transitionImageLayout(*image.image, vk::Format::eR8Unorm, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+
+    vk::DeviceSize imageSize = ch.w * ch.h;
+
+    auto[buffer, mem] = createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    auto mapped = mem.mapMemory(0, imageSize);
+    std::memcpy(mapped, ch.data, imageSize);
+    mem.unmapMemory();
+
+    auto cmd = beginSingleCommand();
+
+    vk::BufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = vk::Offset3D{0, 0, 0};
+    region.imageExtent = vk::Extent3D{static_cast<uint32_t>(ch.w), static_cast<uint32_t>(ch.w), 1};
+
+    cmd.copyBufferToImage(*buffer, *image.image, vk::ImageLayout::eTransferDstOptimal, { region });
+    
+    cmd.end();
+    
+    vk::CommandBuffer cb = *cmd;
+    
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cb;
+    
+    graphicsQueue.submit({ submitInfo });
+    graphicsQueue.waitIdle();
+
+    transitionImageLayout(*image.image, vk::Format::eR8Unorm, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    image_cache["res/tau.png"].img = std::move(image);
+
+    return &(font_cache[font] = std::move(fo));
+}
+
 tau::Instance::Instance() {
     current_instance = this;
 
@@ -902,4 +981,8 @@ void tau::Swapchain::recreate(tau::Instance &instance) {
     *this = instance.createSwapchain();
     instance.depthTexture = instance.createDepthTexture();
     instance.createFramebuffersForSwapchain(*this);
+}
+
+tau::Font::~Font() {
+    
 }
