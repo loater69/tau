@@ -29,6 +29,10 @@ void tau::Component::element::render(tau::Instance& instance, int current_frame,
     child->render(instance, current_frame, cmd);
 }
 
+void tau::span::element::render(Instance& instance, int current_frame, vk::raii::CommandBuffer& cmd) {
+    
+}
+
 void tau::text::element::render(Instance& instance, int current_frame, vk::raii::CommandBuffer& cmd) {
     
 }
@@ -75,4 +79,18 @@ void tau::ImageBG::poolSizes(std::vector<vk::DescriptorPoolSize> &pss) {
     ps.type = vk::DescriptorType::eCombinedImageSampler;
 
     pss.push_back(ps);
+}
+
+tau::Box tau::SpanLayout::layout(Box av, element &el) const {
+    return Box();
+}
+
+std::unique_ptr<tau::span::element> tau::span::operator()(std::string txt) {
+    auto e = std::make_unique<element>();
+
+    e->layout = std::make_unique<SpanLayout>();
+    e->text = std::move(txt);
+    e->font = Instance::current_instance->getFont(font);
+
+    return e;
 }

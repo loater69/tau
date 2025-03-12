@@ -18,6 +18,8 @@
 #include <memory>
 #include <sstream>
 
+#include <stb_truetype.h>
+
 namespace tau {
     class Instance;
     struct element;
@@ -62,6 +64,24 @@ namespace tau {
         std::vector<vk::raii::DescriptorSet> sets;
         std::vector<UniformBuffer> buffers;
     };
+
+    struct FontChar {
+        uint8_t* data;
+        uint8_t w;
+        uint8_t h;
+        int8_t x;
+        int8_t y;
+        float advance;
+    };
+
+    struct Font {
+        stbtt_fontinfo info;
+        std::vector<char> buffer;
+        float scale;
+        std::array<FontChar, 256> chars;
+
+        ~Font();
+    };
     
     class Instance {
     public:
@@ -88,6 +108,7 @@ namespace tau {
 
         std::map<std::type_index, PipelineCacheEntry> pipeline_cache;
         std::map<std::string, CombinedImage> image_cache;
+        std::map<std::string, Font> font_cache;
 
         template<typename Shader>
         PipelineCacheEntry* get_shader() {
@@ -199,6 +220,7 @@ namespace tau {
         }
 
         CombinedImage* getImage(std::string& img);
+        Font* getFont(std::string& font);
 
         std::unique_ptr<ComponentElement> top_component;
         
