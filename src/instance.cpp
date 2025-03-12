@@ -704,8 +704,6 @@ tau::Font* tau::Instance::getFont(std::string& font) {
 
     stbtt_InitFont(&fo.info, (unsigned char*)fo.buffer.data(), 0);
 
-    std::cout << "glyphs" << fo.info.numGlyphs << '\n';
-
     fo.scale = stbtt_ScaleForPixelHeight(&fo.info, 64.0f);
 
     for (size_t i = 0; i < fo.chars.size(); ++i) {
