@@ -51,11 +51,11 @@ void tau::ImageBG::init() {
     image = Instance::current_instance->getImage(src);
 }
 
-void tau::ImageBG::write_bindings(size_t &n, vk::raii::Device &device, vk::raii::DescriptorSet &set)
-{
+void tau::ImageBG::write_bindings(size_t &n, vk::raii::Device &device, vk::raii::DescriptorSet &set) {
     vk::DescriptorImageInfo info{};
     info.sampler = *image->sampler;
     info.imageView = *image->img.view;
+    info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
     vk::WriteDescriptorSet wds{};
     wds.dstSet = *set;
